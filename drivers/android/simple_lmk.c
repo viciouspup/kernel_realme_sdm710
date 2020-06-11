@@ -28,9 +28,13 @@ struct victim_info {
 };
 
 /* Pulled from the Android framework. Lower adj means higher priority. */
-static const unsigned short adjs[] = {
-	SHRT_MAX + 1, /* Include all positive adjs in the final range */
-	950, /* CACHED_APP_LMK_FIRST_ADJ */
+static const short adj_prio[] = {
+	906, /* CACHED_APP_MAX_ADJ */
+	905, /* Cached app */
+	904, /* Cached app */
+	903, /* Cached app */
+	902, /* Cached app */
+	901, /* Cached app */
 	900, /* CACHED_APP_MIN_ADJ */
 	800, /* SERVICE_B_ADJ */
 	700, /* PREVIOUS_APP_ADJ */
@@ -38,11 +42,9 @@ static const unsigned short adjs[] = {
 	500, /* SERVICE_ADJ */
 	400, /* HEAVY_WEIGHT_APP_ADJ */
 	300, /* BACKUP_APP_ADJ */
-	250, /* PERCEPTIBLE_LOW_APP_ADJ */
 	200, /* PERCEPTIBLE_APP_ADJ */
 	100, /* VISIBLE_APP_ADJ */
-	50, /* PERCEPTIBLE_RECENT_FOREGROUND_APP_ADJ */
-	0 /* FOREGROUND_APP_ADJ */
+	0    /* FOREGROUND_APP_ADJ */
 };
 
 static struct victim_info victims[MAX_VICTIMS];
@@ -84,8 +86,7 @@ static unsigned long get_total_mm_pages(struct mm_struct *mm)
 	return pages;
 }
 
-static unsigned long find_victims(int *vindex, unsigned short target_adj_min,
-				  unsigned short target_adj_max)
+static unsigned long find_victims(int *vindex, short target_adj)
 {
 	unsigned long pages_found = 0;
 	int old_vindex = *vindex;
@@ -94,7 +95,6 @@ static unsigned long find_victims(int *vindex, unsigned short target_adj_min,
 	for_each_process(tsk) {
 		struct signal_struct *sig;
 		struct task_struct *vtsk;
-		short adj;
 
 		/*
 		 * Search for suitable tasks with the targeted importance (adj).
@@ -106,8 +106,7 @@ static unsigned long find_victims(int *vindex, unsigned short target_adj_min,
 		 * trying to lock a task that we locked earlier.
 		 */
 		sig = tsk->signal;
-		adj = READ_ONCE(sig->oom_score_adj);
-		if (adj < target_adj_min || adj > target_adj_max - 1 ||
+		if (READ_ONCE(sig->oom_score_adj) != target_adj ||
 		    sig->flags & (SIGNAL_GROUP_EXIT | SIGNAL_GROUP_COREDUMP) ||
 		    (thread_group_empty(tsk) && tsk->flags & PF_EXITING) ||
 		    vtsk_is_duplicate(*vindex, tsk))
@@ -171,14 +170,18 @@ static void scan_and_kill(unsigned long pages_needed)
 	int i, nr_to_kill = 0, nr_found = 0;
 	unsigned long pages_found = 0;
 
-	/* Hold an RCU read lock while traversing the global process list */
-	rcu_read_lock();
-	for (i = 1; i < ARRAY_SIZE(adjs); i++) {
+	/*
+	 * Hold the tasklist lock so tasks don't disappear while scanning. This
+	 * is preferred to holding an RCU read lock so that the list of tasks
+	 * is guaranteed to be up to date.
+	 */
+	read_lock(&tasklist_lock);
+	for (i = 0; i < ARRAY_SIZE(adj_prio); i++) {
 		pages_found += find_victims(&nr_found, adjs[i], adjs[i - 1]);
 		if (pages_found >= pages_needed || nr_found == MAX_VICTIMS)
 			break;
 	}
-	rcu_read_unlock();
+	read_unlock(&tasklist_lock);
 
 	/* Pretty unlikely but it can happen */
 	if (unlikely(!nr_found)) {
