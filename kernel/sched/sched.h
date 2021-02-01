@@ -2961,7 +2961,7 @@ static inline bool early_detection_notify(struct rq *rq, u64 wallclock)
 
 static inline unsigned int power_cost(int cpu, bool max)
 {
-	return SCHED_CAPACITY_SCALE;
+	return capacity_orig_of(cpu);
 }
 
 static inline void walt_sched_energy_populated_callback(void) { }
