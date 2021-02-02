@@ -282,25 +282,25 @@ config WAKE_BOOST_DURATION_MS
 
 config INPUT_BOOST_FREQ_LP
 	int "Low-power cluster boost freq"
-	default "0"
+	default "1708"
 	help
 	  Input boost frequency for the low-power CPU cluster.
 
 config INPUT_BOOST_FREQ_PERF
 	int "Performance cluster boost freq"
-	default "0"
+	default "2304"
 	help
 	  Input boost frequency for the performance CPU cluster.
 
 config MAX_BOOST_FREQ_LP
 	int "Low-power cluster max-boost freq"
-	default "0"
+	default "1708"
 	help
 	  Max-boost frequency for the low-power CPU cluster.
 
 config MAX_BOOST_FREQ_PERF
 	int "Performance cluster max-boost freq"
-	default "0"
+	default "2304"
 	help
 	  Max-boost frequency for the performance CPU cluster.
 
