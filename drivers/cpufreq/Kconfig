@@ -290,7 +290,7 @@ config TA_STUNE_BOOST
 	
 config INPUT_BOOST_FREQ_LP
 	int "Low-power cluster boost freq"
-	default "1324"
+	default "0"
 	help
 	  Input boost frequency for the low-power CPU cluster.
 
@@ -302,7 +302,7 @@ config INPUT_BOOST_FREQ_PERF
 
 config MAX_BOOST_FREQ_LP
 	int "Low-power cluster max-boost freq"
-	default "1324"
+	default "0"
 	help
 	  Max-boost frequency for the low-power CPU cluster.
 
