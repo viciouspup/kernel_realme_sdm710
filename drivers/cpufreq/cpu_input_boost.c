@@ -1,243 +1,269 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2018-2019 Sultan Alsawaf <sultan@kerneltoast.com>.
+ * Copyright (C) 2014-2016, Sultanxda <sultanxda@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
-#define pr_fmt(fmt) "cpu_input_boost: " fmt
+#define pr_fmt(fmt) "cpu_iboost: " fmt
 
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
 #include <linux/fb.h>
 #include <linux/input.h>
-#include <linux/kthread.h>
+#include <linux/slab.h>
 
-enum {
-	SCREEN_OFF,
-	INPUT_BOOST,
-	MAX_BOOST
+#define FB_BOOST_MS 1100
+
+enum boost_status {
+	UNBOOST,
+	BOOST,
+	REBOOST,
 };
 
-struct boost_drv {
-	struct delayed_work input_unboost;
-	struct delayed_work max_unboost;
-	struct notifier_block cpu_notif;
-	struct notifier_block fb_notif;
-	wait_queue_head_t boost_waitq;
-	atomic_long_t max_boost_expires;
-	unsigned long state;
+struct fb_policy {
+	struct work_struct boost_work;
+	struct delayed_work unboost_work;
+	enum boost_status state;
 };
 
-static void input_unboost_worker(struct work_struct *work);
-static void max_unboost_worker(struct work_struct *work);
-
-static struct boost_drv boost_drv_g __read_mostly = {
-	.input_unboost = __DELAYED_WORK_INITIALIZER(boost_drv_g.input_unboost,
-						    input_unboost_worker, 0),
-	.max_unboost = __DELAYED_WORK_INITIALIZER(boost_drv_g.max_unboost,
-						  max_unboost_worker, 0),
-	.boost_waitq = __WAIT_QUEUE_HEAD_INITIALIZER(boost_drv_g.boost_waitq)
+struct ib_pcpu {
+	struct delayed_work unboost_work;
+	enum boost_status state;
+	uint32_t cpu;
 };
 
-static unsigned int get_input_boost_freq(struct cpufreq_policy *policy)
+struct ib_config {
+	struct ib_pcpu __percpu *boost_info;
+	struct work_struct boost_work;
+	struct work_struct reboost_work;
+	enum boost_status running;
+	uint64_t start_time;
+	uint32_t adj_duration_ms;
+	uint32_t duration_ms;
+	uint32_t freq[2];
+	uint32_t nr_cpus_boosted;
+	uint32_t nr_cpus_to_boost;
+};
+
+struct boost_policy {
+	spinlock_t lock;
+	struct fb_policy fb;
+	struct ib_config ib;
+	struct workqueue_struct *wq;
+	uint8_t enabled;
+};
+
+static struct boost_policy *boost_policy_g;
+
+static void boost_cpu0(struct boost_policy *b);
+static bool is_driver_enabled(struct boost_policy *b);
+static bool is_fb_boost_active(struct boost_policy *b);
+static void set_fb_state(struct boost_policy *b, enum boost_status state);
+static void set_ib_status(struct boost_policy *b, enum boost_status status);
+static void unboost_all_cpus(struct boost_policy *b);
+static void unboost_cpu(struct ib_pcpu *pcpu);
+
+static void ib_boost_main(struct work_struct *work)
 {
-	unsigned int freq;
+	struct boost_policy *b = boost_policy_g;
 
-	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
-		freq = CONFIG_INPUT_BOOST_FREQ_LP;
-	else
-		freq = CONFIG_INPUT_BOOST_FREQ_PERF;
-
-	return min(freq, policy->max);
-}
-
-static unsigned int get_max_boost_freq(struct cpufreq_policy *policy)
-{
-	unsigned int freq;
-
-	if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
-		freq = CONFIG_MAX_BOOST_FREQ_LP;
-	else
-		freq = CONFIG_MAX_BOOST_FREQ_PERF;
-
-	return min(freq, policy->max);
-}
-
-static void update_online_cpu_policy(void)
-{
-	unsigned int cpu;
-
-	/* Only one CPU from each cluster needs to be updated */
 	get_online_cpus();
-	cpu = cpumask_first_and(cpu_lp_mask, cpu_online_mask);
-	cpufreq_update_policy(cpu);
-	cpu = cpumask_first_and(cpu_perf_mask, cpu_online_mask);
-	cpufreq_update_policy(cpu);
+
+	b->ib.nr_cpus_boosted = 0;
+
+	/*
+	 * Maximum of two CPUs can be boosted at any given time.
+	 * Boost two CPUs if only one is online as it's very likely
+	 * that another CPU will come online soon (due to user interaction).
+	 * The next CPU to come online is the other CPU that will be boosted.
+	 */
+	b->ib.nr_cpus_to_boost = num_online_cpus() == 1 ? 2 : 1;
+
+	/*
+	 * Reduce the boost duration for all CPUs by a factor of
+	 * (1 + num_online_cpus())/(3 + num_online_cpus()).
+	 */
+	b->ib.adj_duration_ms = b->ib.duration_ms * 3 /
+					(3 + num_online_cpus());
+
+	/*
+	 * Only boost CPU0 from here. More than one CPU is only boosted when
+	 * the 2nd CPU to boost is offline at this point in time, so the boost
+	 * notifier will handle boosting the 2nd CPU if/when it comes online.
+	 */
+	boost_cpu0(b);
+
 	put_online_cpus();
 }
 
-static void __cpu_input_boost_kick(struct boost_drv *b)
+static void ib_unboost_main(struct work_struct *work)
 {
-	if (test_bit(SCREEN_OFF, &b->state))
-		return;
+	struct boost_policy *b = boost_policy_g;
+	struct ib_pcpu *pcpu = container_of(work, typeof(*pcpu),
+						unboost_work.work);
+	uint32_t cpu;
 
-	set_bit(INPUT_BOOST, &b->state);
-	if (!mod_delayed_work(system_unbound_wq, &b->input_unboost,
-			      msecs_to_jiffies(CONFIG_INPUT_BOOST_DURATION_MS)))
-		wake_up(&b->boost_waitq);
-}
+	unboost_cpu(pcpu);
 
-void cpu_input_boost_kick(void)
-{
-	struct boost_drv *b = &boost_drv_g;
-
-	__cpu_input_boost_kick(b);
-}
-
-static void __cpu_input_boost_kick_max(struct boost_drv *b,
-				       unsigned int duration_ms)
-{
-	unsigned long boost_jiffies = msecs_to_jiffies(duration_ms);
-	unsigned long curr_expires, new_expires;
-
-	if (test_bit(SCREEN_OFF, &b->state))
-		return;
-
-	do {
-		curr_expires = atomic_long_read(&b->max_boost_expires);
-		new_expires = jiffies + boost_jiffies;
-
-		/* Skip this boost if there's a longer boost in effect */
-		if (time_after(curr_expires, new_expires))
+	/* Check if all boosts are finished */
+	for_each_possible_cpu(cpu) {
+		pcpu = per_cpu_ptr(b->ib.boost_info, cpu);
+		if (pcpu->state == BOOST)
 			return;
-	} while (atomic_long_cmpxchg(&b->max_boost_expires, curr_expires,
-				     new_expires) != curr_expires);
-
-	set_bit(MAX_BOOST, &b->state);
-	if (!mod_delayed_work(system_unbound_wq, &b->max_unboost,
-			      boost_jiffies))
-		wake_up(&b->boost_waitq);
-}
-
-void cpu_input_boost_kick_max(unsigned int duration_ms)
-{
-	struct boost_drv *b = &boost_drv_g;
-
-	__cpu_input_boost_kick_max(b, duration_ms);
-}
-
-static void input_unboost_worker(struct work_struct *work)
-{
-	struct boost_drv *b = container_of(to_delayed_work(work),
-					   typeof(*b), input_unboost);
-
-	clear_bit(INPUT_BOOST, &b->state);
-	wake_up(&b->boost_waitq);
-}
-
-static void max_unboost_worker(struct work_struct *work)
-{
-	struct boost_drv *b = container_of(to_delayed_work(work),
-					   typeof(*b), max_unboost);
-
-	clear_bit(MAX_BOOST, &b->state);
-	wake_up(&b->boost_waitq);
-}
-
-static int cpu_thread(void *data)
-{
-	static const struct sched_param sched_max_rt_prio = {
-		.sched_priority = MAX_RT_PRIO - 1
-	};
-	struct boost_drv *b = data;
-	unsigned long old_state = 0;
-
-	sched_setscheduler_nocheck(current, SCHED_FIFO, &sched_max_rt_prio);
-
-	while (1) {
-		bool should_stop = false;
-		unsigned long curr_state;
-
-		wait_event(b->boost_waitq,
-			(curr_state = READ_ONCE(b->state)) != old_state ||
-			(should_stop = kthread_should_stop()));
-
-		if (should_stop)
-			break;
-
-		old_state = curr_state;
-		update_online_cpu_policy();
 	}
 
-	return 0;
+	/* All input boosts are done, ready to accept new boosts now */
+	set_ib_status(b, UNBOOST);
 }
 
-static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
-			   void *data)
+static void fb_boost_main(struct work_struct *work)
 {
-	struct boost_drv *b = container_of(nb, typeof(*b), cpu_notif);
+	struct boost_policy *b = boost_policy_g;
+	uint32_t cpu;
+
+	/* All CPUs will be boosted to policy->max */
+	set_fb_state(b, BOOST);
+
+	/* Immediately boost the online CPUs to policy->max */
+	get_online_cpus();
+	for_each_online_cpu(cpu)
+		cpufreq_update_policy(cpu);
+	put_online_cpus();
+
+	queue_delayed_work(b->wq, &b->fb.unboost_work,
+				msecs_to_jiffies(FB_BOOST_MS));
+}
+
+static void fb_unboost_main(struct work_struct *work)
+{
+	struct boost_policy *b = boost_policy_g;
+
+	set_fb_state(b, UNBOOST);
+	unboost_all_cpus(b);
+}
+
+static void ib_reboost_main(struct work_struct *work)
+{
+	struct boost_policy *b = boost_policy_g;
+	struct ib_pcpu *pcpu = per_cpu_ptr(b->ib.boost_info, 0);
+
+	/* Only keep CPU0 boosted (more efficient) */
+	if (cancel_delayed_work_sync(&pcpu->unboost_work))
+		queue_delayed_work(b->wq, &pcpu->unboost_work,
+				msecs_to_jiffies(b->ib.adj_duration_ms));
+
+	/* Clear reboost flag */
+	set_ib_status(b, pcpu->state);
+}
+
+static int do_cpu_boost(struct notifier_block *nb,
+		unsigned long val, void *data)
+{
 	struct cpufreq_policy *policy = data;
+	struct boost_policy *b = boost_policy_g;
+	struct ib_pcpu *pcpu = per_cpu_ptr(b->ib.boost_info, policy->cpu);
 
-	if (action != CPUFREQ_ADJUST)
+	if (val != CPUFREQ_ADJUST)
 		return NOTIFY_OK;
 
-	/* Unboost when the screen is off */
-	if (test_bit(SCREEN_OFF, &b->state)) {
-		policy->min = policy->cpuinfo.min_freq;
+	if (!is_driver_enabled(b) && policy->min == policy->cpuinfo.min_freq)
 		return NOTIFY_OK;
-	}
 
-	/* Boost CPU to max frequency for max boost */
-	if (test_bit(MAX_BOOST, &b->state)) {
-		policy->min = get_max_boost_freq(policy);
+	if (is_fb_boost_active(b)) {
+		policy->min = policy->max;
 		return NOTIFY_OK;
 	}
 
-	/*
-	 * Boost to policy->max if the boost frequency is higher. When
-	 * unboosting, set policy->min to the absolute min freq for the CPU.
-	 */
-	if (test_bit(INPUT_BOOST, &b->state))
-		policy->min = get_input_boost_freq(policy);
+	/* Boost previously-offline CPU */
+	if (b->ib.nr_cpus_boosted < b->ib.nr_cpus_to_boost &&
+		policy->cpu && !pcpu->state) {
+		int32_t duration_ms = b->ib.adj_duration_ms -
+			(ktime_to_ms(ktime_get()) - b->ib.start_time);
+		if (duration_ms > 0) {
+			pcpu->state = BOOST;
+			b->ib.nr_cpus_boosted++;
+			queue_delayed_work(b->wq, &pcpu->unboost_work,
+						msecs_to_jiffies(duration_ms));
+		}
+	}
+
+	if (pcpu->state)
+		policy->min = min(policy->max,
+				b->ib.freq[policy->cpu ? 1 : 0]);
 	else
 		policy->min = policy->cpuinfo.min_freq;
 
 	return NOTIFY_OK;
 }
 
-static int fb_notifier_cb(struct notifier_block *nb, unsigned long action,
-			  void *data)
-{
-	struct boost_drv *b = container_of(nb, typeof(*b), fb_notif);
-	int *blank = ((struct fb_event *)data)->data;
+static struct notifier_block do_cpu_boost_nb = {
+	.notifier_call = do_cpu_boost,
+};
 
-	/* Parse framebuffer blank events as soon as they occur */
-	if (action != FB_EARLY_EVENT_BLANK)
+static int fb_unblank_boost(struct notifier_block *nb,
+		unsigned long val, void *data)
+{
+	struct boost_policy *b = boost_policy_g;
+	struct fb_event *evdata = data;
+	int *blank = evdata->data;
+
+	/* Only boost for unblank (i.e. when device is woken) */
+	if (val != FB_EVENT_BLANK || *blank != FB_BLANK_UNBLANK)
 		return NOTIFY_OK;
 
-	/* Boost when the screen turns on and unboost when it turns off */
-	if (*blank == FB_BLANK_UNBLANK) {
-		clear_bit(SCREEN_OFF, &b->state);
-		__cpu_input_boost_kick_max(b, CONFIG_WAKE_BOOST_DURATION_MS);
-	} else {
-		set_bit(SCREEN_OFF, &b->state);
-		wake_up(&b->boost_waitq);
-	}
+	if (!is_driver_enabled(b))
+		return NOTIFY_OK;
+
+	/* Framebuffer boost is already in progress */
+	if (is_fb_boost_active(b))
+		return NOTIFY_OK;
+
+	queue_work(b->wq, &b->fb.boost_work);
 
 	return NOTIFY_OK;
 }
 
-static void cpu_input_boost_input_event(struct input_handle *handle,
-					unsigned int type, unsigned int code,
-					int value)
-{
-	struct boost_drv *b = handle->handler->private;
+static struct notifier_block fb_boost_nb = {
+	.notifier_call	= fb_unblank_boost,
+	.priority	= INT_MAX,
+};
 
-	__cpu_input_boost_kick(b);
+static void cpu_ib_input_event(struct input_handle *handle, unsigned int type,
+		unsigned int code, int value)
+{
+	struct boost_policy *b = handle->handler->private;
+	enum boost_status ib_status;
+	bool do_boost;
+
+	spin_lock(&b->lock);
+	ib_status = b->ib.running;
+	do_boost = b->enabled && !b->fb.state && (ib_status != REBOOST);
+	spin_unlock(&b->lock);
+
+	if (!do_boost)
+		return;
+
+	/* Continuous boosting (from constant user input) */
+	if (ib_status == BOOST) {
+		set_ib_status(b, REBOOST);
+		queue_work(b->wq, &b->ib.reboost_work);
+		return;
+	}
+
+	set_ib_status(b, BOOST);
+
+	queue_work(b->wq, &b->ib.boost_work);
 }
 
-static int cpu_input_boost_input_connect(struct input_handler *handler,
-					 struct input_dev *dev,
-					 const struct input_device_id *id)
+static int cpu_ib_input_connect(struct input_handler *handler,
+		struct input_dev *dev, const struct input_device_id *id)
 {
 	struct input_handle *handle;
 	int ret;
@@ -248,110 +274,347 @@ static int cpu_input_boost_input_connect(struct input_handler *handler,
 
 	handle->dev = dev;
 	handle->handler = handler;
-	handle->name = "cpu_input_boost_handle";
+	handle->name = "cpu_ib_handle";
 
 	ret = input_register_handle(handle);
 	if (ret)
-		goto free_handle;
+		goto err2;
 
 	ret = input_open_device(handle);
 	if (ret)
-		goto unregister_handle;
+		goto err1;
 
 	return 0;
 
-unregister_handle:
+err1:
 	input_unregister_handle(handle);
-free_handle:
+err2:
 	kfree(handle);
 	return ret;
 }
 
-static void cpu_input_boost_input_disconnect(struct input_handle *handle)
+static void cpu_ib_input_disconnect(struct input_handle *handle)
 {
 	input_close_device(handle);
 	input_unregister_handle(handle);
 	kfree(handle);
 }
 
-static const struct input_device_id cpu_input_boost_ids[] = {
-	/* Multi-touch touchscreen */
+static const struct input_device_id cpu_ib_ids[] = {
+	/* multi-touch touchscreen */
 	{
 		.flags = INPUT_DEVICE_ID_MATCH_EVBIT |
 			INPUT_DEVICE_ID_MATCH_ABSBIT,
 		.evbit = { BIT_MASK(EV_ABS) },
 		.absbit = { [BIT_WORD(ABS_MT_POSITION_X)] =
 			BIT_MASK(ABS_MT_POSITION_X) |
-			BIT_MASK(ABS_MT_POSITION_Y) }
+			BIT_MASK(ABS_MT_POSITION_Y) },
 	},
-	/* Touchpad */
+	/* touchpad */
 	{
 		.flags = INPUT_DEVICE_ID_MATCH_KEYBIT |
 			INPUT_DEVICE_ID_MATCH_ABSBIT,
 		.keybit = { [BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH) },
 		.absbit = { [BIT_WORD(ABS_X)] =
-			BIT_MASK(ABS_X) | BIT_MASK(ABS_Y) }
+			BIT_MASK(ABS_X) | BIT_MASK(ABS_Y) },
 	},
-	/* Keypad */
-	{
-		.flags = INPUT_DEVICE_ID_MATCH_EVBIT,
-		.evbit = { BIT_MASK(EV_KEY) }
-	},
-	{ }
+	{ },
 };
 
-static struct input_handler cpu_input_boost_input_handler = {
-	.event		= cpu_input_boost_input_event,
-	.connect	= cpu_input_boost_input_connect,
-	.disconnect	= cpu_input_boost_input_disconnect,
-	.name		= "cpu_input_boost_handler",
-	.id_table	= cpu_input_boost_ids
+static struct input_handler cpu_ib_input_handler = {
+	.event		= cpu_ib_input_event,
+	.connect	= cpu_ib_input_connect,
+	.disconnect	= cpu_ib_input_disconnect,
+	.name		= "cpu_ib_handler",
+	.id_table	= cpu_ib_ids,
 };
 
-static int __init cpu_input_boost_init(void)
+static void boost_cpu0(struct boost_policy *b)
 {
-	struct boost_drv *b = &boost_drv_g;
-	struct task_struct *thread;
+	struct ib_pcpu *pcpu = per_cpu_ptr(b->ib.boost_info, 0);
+
+	pcpu->state = BOOST;
+	b->ib.nr_cpus_boosted++;
+	cpufreq_update_policy(0);
+	queue_delayed_work(b->wq, &pcpu->unboost_work,
+				msecs_to_jiffies(b->ib.adj_duration_ms));
+
+	/* Record start time for use if a 2nd CPU to be boosted comes online */
+	b->ib.start_time = ktime_to_ms(ktime_get());
+}
+
+static bool is_driver_enabled(struct boost_policy *b)
+{
+	bool ret;
+
+	spin_lock(&b->lock);
+	ret = b->enabled;
+	spin_unlock(&b->lock);
+
+	return ret;
+}
+
+static bool is_fb_boost_active(struct boost_policy *b)
+{
+	bool ret;
+
+	spin_lock(&b->lock);
+	ret = b->fb.state;
+	spin_unlock(&b->lock);
+
+	return ret;
+}
+
+static void set_fb_state(struct boost_policy *b, enum boost_status state)
+{
+	spin_lock(&b->lock);
+	b->fb.state = state;
+	spin_unlock(&b->lock);
+}
+
+static void set_ib_status(struct boost_policy *b, enum boost_status status)
+{
+	spin_lock(&b->lock);
+	b->ib.running = status;
+	spin_unlock(&b->lock);
+}
+
+static void unboost_all_cpus(struct boost_policy *b)
+{
+	struct ib_pcpu *pcpu;
+	uint32_t cpu;
+
+	get_online_cpus();
+	for_each_possible_cpu(cpu) {
+		pcpu = per_cpu_ptr(b->ib.boost_info, cpu);
+		pcpu->state = UNBOOST;
+		if (cpu_online(cpu))
+			cpufreq_update_policy(cpu);
+	}
+	put_online_cpus();
+
+	set_ib_status(b, UNBOOST);
+}
+
+static void unboost_cpu(struct ib_pcpu *pcpu)
+{
+	pcpu->state = UNBOOST;
+	get_online_cpus();
+	if (cpu_online(pcpu->cpu))
+		cpufreq_update_policy(pcpu->cpu);
+	put_online_cpus();
+}
+
+static ssize_t enabled_write(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct boost_policy *b = boost_policy_g;
+	uint32_t data;
 	int ret;
 
-	b->cpu_notif.notifier_call = cpu_notifier_cb;
-	b->cpu_notif.priority = INT_MAX - 2;
-	ret = cpufreq_register_notifier(&b->cpu_notif, CPUFREQ_POLICY_NOTIFIER);
-	if (ret) {
-		pr_err("Failed to register cpufreq notifier, err: %d\n", ret);
-		return ret;
+	ret = sscanf(buf, "%u", &data);
+	if (ret != 1)
+		return -EINVAL;
+
+	spin_lock(&b->lock);
+	b->enabled = data;
+	spin_unlock(&b->lock);
+
+	/* Ensure that everything is stopped when returning from here */
+	if (!data) {
+		cancel_work_sync(&b->fb.boost_work);
+		cancel_work_sync(&b->ib.boost_work);
+		set_fb_state(b, UNBOOST);
+		unboost_all_cpus(b);
 	}
 
-	cpu_input_boost_input_handler.private = b;
-	ret = input_register_handler(&cpu_input_boost_input_handler);
+	return size;
+}
+
+static ssize_t ib_freqs_write(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct boost_policy *b = boost_policy_g;
+	uint32_t freq[2];
+	int ret;
+
+	ret = sscanf(buf, "%u %u", &freq[0], &freq[1]);
+	if (ret != 2)
+		return -EINVAL;
+
+	if (!freq[0] || !freq[1])
+		return -EINVAL;
+
+	/* freq[0] is assigned to CPU0, freq[1] to CPUX (X > 0) */
+	b->ib.freq[0] = freq[0];
+	b->ib.freq[1] = freq[1];
+
+	return size;
+}
+
+static ssize_t ib_duration_ms_write(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct boost_policy *b = boost_policy_g;
+	uint32_t ms;
+	int ret;
+
+	ret = sscanf(buf, "%u", &ms);
+	if (ret != 1)
+		return -EINVAL;
+
+	if (!ms)
+		return -EINVAL;
+
+	b->ib.duration_ms = ms;
+
+	return size;
+}
+
+static ssize_t enabled_read(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct boost_policy *b = boost_policy_g;
+
+	return snprintf(buf, PAGE_SIZE, "%u\n", b->enabled);
+}
+
+static ssize_t ib_freqs_read(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct boost_policy *b = boost_policy_g;
+
+	return snprintf(buf, PAGE_SIZE, "%u %u\n",
+				b->ib.freq[0], b->ib.freq[1]);
+}
+
+static ssize_t ib_duration_ms_read(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct boost_policy *b = boost_policy_g;
+
+	return snprintf(buf, PAGE_SIZE, "%u\n", b->ib.duration_ms);
+}
+
+static DEVICE_ATTR(enabled, 0644,
+			enabled_read, enabled_write);
+static DEVICE_ATTR(ib_freqs, 0644,
+			ib_freqs_read, ib_freqs_write);
+static DEVICE_ATTR(ib_duration_ms, 0644,
+			ib_duration_ms_read, ib_duration_ms_write);
+
+static struct attribute *cpu_ib_attr[] = {
+	&dev_attr_enabled.attr,
+	&dev_attr_ib_freqs.attr,
+	&dev_attr_ib_duration_ms.attr,
+	NULL
+};
+
+static struct attribute_group cpu_ib_attr_group = {
+	.attrs = cpu_ib_attr,
+};
+
+static int sysfs_ib_init(void)
+{
+	struct kobject *kobj;
+	int ret;
+
+	kobj = kobject_create_and_add("cpu_input_boost",
+					kernel_kobj);
+	if (!kobj) {
+		pr_err("Failed to create kobject\n");
+		return -ENOMEM;
+	}
+
+	ret = sysfs_create_group(kobj, &cpu_ib_attr_group);
+	if (ret) {
+		pr_err("Failed to create sysfs interface\n");
+		kobject_put(kobj);
+	}
+
+	return ret;
+}
+
+static struct boost_policy *alloc_boost_policy(void)
+{
+	struct boost_policy *b;
+
+	b = kzalloc(sizeof(*b), GFP_KERNEL);
+	if (!b) {
+		pr_err("Failed to allocate boost policy\n");
+		return NULL;
+	}
+
+	b->wq = alloc_workqueue("cpu_ib_wq", WQ_HIGHPRI | WQ_NON_REENTRANT, 0);
+	if (!b->wq) {
+		pr_err("Failed to allocate workqueue\n");
+		goto free_b;
+	}
+
+	b->ib.boost_info = alloc_percpu(typeof(*b->ib.boost_info));
+	if (!b->ib.boost_info) {
+		pr_err("Failed to allocate percpu definition\n");
+		goto destroy_wq;
+	}
+
+	return b;
+
+destroy_wq:
+	destroy_workqueue(b->wq);
+free_b:
+	kfree(b);
+	return NULL;
+}
+
+static int __init cpu_ib_init(void)
+{
+	struct boost_policy *b;
+	uint32_t cpu;
+	int ret;
+
+	b = alloc_boost_policy();
+	if (!b)
+		return -ENOMEM;
+
+	spin_lock_init(&b->lock);
+
+	INIT_WORK(&b->fb.boost_work, fb_boost_main);
+	INIT_DELAYED_WORK(&b->fb.unboost_work, fb_unboost_main);
+	INIT_WORK(&b->ib.boost_work, ib_boost_main);
+	INIT_WORK(&b->ib.reboost_work, ib_reboost_main);
+
+	for_each_possible_cpu(cpu) {
+		struct ib_pcpu *pcpu = per_cpu_ptr(b->ib.boost_info, cpu);
+
+		pcpu->cpu = cpu;
+		INIT_DELAYED_WORK(&pcpu->unboost_work, ib_unboost_main);
+	}
+
+	/* Allow global boost config access */
+	boost_policy_g = b;
+
+	cpu_ib_input_handler.private = b;
+	ret = input_register_handler(&cpu_ib_input_handler);
 	if (ret) {
 		pr_err("Failed to register input handler, err: %d\n", ret);
-		goto unregister_cpu_notif;
+		goto free_mem;
 	}
 
-	b->fb_notif.notifier_call = fb_notifier_cb;
-	b->fb_notif.priority = INT_MAX;
-	ret = fb_register_client(&b->fb_notif);
-	if (ret) {
-		pr_err("Failed to register fb notifier, err: %d\n", ret);
-		goto unregister_handler;
-	}
+	ret = sysfs_ib_init();
+	if (ret)
+		goto input_unregister;
 
-	thread = kthread_run(cpu_thread, b, "cpu_boostd");
-	if (IS_ERR(thread)) {
-		ret = PTR_ERR(thread);
-		pr_err("Failed to start CPU boost thread, err: %d\n", ret);
-		goto unregister_fb_notif;
-	}
+	cpufreq_register_notifier(&do_cpu_boost_nb, CPUFREQ_POLICY_NOTIFIER);
+
+	fb_register_client(&fb_boost_nb);
 
 	return 0;
 
-unregister_fb_notif:
-	fb_unregister_client(&b->fb_notif);
-unregister_handler:
-	input_unregister_handler(&cpu_input_boost_input_handler);
-unregister_cpu_notif:
-	cpufreq_unregister_notifier(&b->cpu_notif, CPUFREQ_POLICY_NOTIFIER);
+input_unregister:
+	input_unregister_handler(&cpu_ib_input_handler);
+free_mem:
+	free_percpu(b->ib.boost_info);
+	kfree(b);
 	return ret;
 }
-subsys_initcall(cpu_input_boost_init);
+late_initcall(cpu_ib_init);
