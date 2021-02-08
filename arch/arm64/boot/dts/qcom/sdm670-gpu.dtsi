@@ -237,11 +237,11 @@
 
 			compatible="qcom,gpu-pwrlevel-bins";
 
-			qcom,gpu-pwrlevels-5 {
+			qcom,gpu-pwrlevels-3 {
 				#address-cells = <1>;
 				#size-cells = <0>;
 
-				qcom,speed-bin = <128>;
+				qcom,speed-bin = <129>;
 
 				qcom,initial-pwrlevel = <7>;
 				qcom,ca-target-pwrlevel = <5>;
