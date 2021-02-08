@@ -237,7 +237,7 @@
 
 			compatible="qcom,gpu-pwrlevel-bins";
 
-			qcom,gpu-pwrlevels-5 {
+			qcom,gpu-pwrlevels-3 {
 				#address-cells = <1>;
 				#size-cells = <0>;
 
