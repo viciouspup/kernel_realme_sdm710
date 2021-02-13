@@ -55,6 +55,7 @@ config ANDROID_BINDER_IPC_SELFTEST
 	  alignments.
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 config ANDROID_SIMPLE_LMK
 	bool "Simple Android Low Memory Killer"
 	depends on !ANDROID_LOW_MEMORY_KILLER && !MEMCG
@@ -110,6 +111,8 @@ config ANDROID_SIMPLE_LMK_TIMEOUT_MSEC
 
 endif
 
+=======
+>>>>>>> parent of cfbb4d1f0866... Introduce simple LMK
 =======
 >>>>>>> parent of cfbb4d1f0866... Introduce simple LMK
 endif # if ANDROID
