@@ -784,7 +784,6 @@ CONFIG_CRYPTO_LZ4=y
 # endif
 # ifdef VENDOR_EDIT
 # YiXue.Ge@PSW.BSP.Kernel.Driver,2017/07/03, Add for enable PGTABLE_MAPPING
-CONFIG_PGTABLE_MAPPING=y
 # endif
 
 #ifdef VENDOR_EDIT
