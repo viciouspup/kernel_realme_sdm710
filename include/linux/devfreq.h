@@ -446,7 +446,6 @@ static inline int update_devfreq(struct devfreq *devfreq)
 {
 	return -EINVAL;
 }
-
 #endif /* VENDOR_EDIT */
 
 #endif /* CONFIG_PM_DEVFREQ */
