@@ -10,7 +10,7 @@
 #include <linux/input.h>
 #include <linux/kthread.h>
 #include <linux/slab.h>
-#include <uapi/linux/sched/types.h>
+#include <linux/sched.h>
 #include <linux/module.h>
 
 static bool disable_boosts __read_mostly;
