@@ -1,5 +1,4 @@
-/* DTS_EAGLE START */
-#ifndef DTS_EAGLE_DRV_H
+ #ifndef DTS_EAGLE_DRV_H
 #define DTS_EAGLE_DRV_H
 
 
@@ -56,4 +55,3 @@ struct dts_eagle_cache_block {
 } __packed;
 
 #endif
-/* DTS_EAGLE END */
