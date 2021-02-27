@@ -1,4 +1,4 @@
- /* Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -3334,10 +3334,12 @@
 /* sdm670.dtsi */
 &clock_cpucc {
 	qcom,cpufreq-table-0 =
+                <1209600>,
 		<1612800>,
 		<1708800>;
 
 	qcom,cpufreq-table-6 =
+                <652800>,
 		<979200>,
 		<1843200>,
 		<2304000>;
