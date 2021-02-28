@@ -36,9 +36,6 @@ static struct work_struct input_boost_work;
 
 static bool input_boost_enabled;
 
-static bool input_devfreq_boost = 0;
-module_param(input_devfreq_boost, uint, 0644);
-
 static unsigned int input_boost_ms = 40;
 module_param(input_boost_ms, uint, 0644);
 

@@ -44,6 +44,9 @@ module_param(max_boost_freq_hp, uint, 0644);
 module_param(remove_input_boost_freq_lp, uint, 0644);
 module_param(remove_input_boost_freq_perf, uint, 0644);
 
+static bool input_devfreq_boost = 0;
+module_param(input_devfreq_boost, uint, 0644);
+
 module_param(input_boost_duration, short, 0644);
 module_param(wake_boost_duration, short, 0644);
 
