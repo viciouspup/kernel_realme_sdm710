@@ -36,6 +36,9 @@ static struct work_struct input_boost_work;
 
 static bool input_boost_enabled;
 
+static bool input_devfreq_boost = 0;
+module_param(input_devfreq_boost, uint, 0644);
+
 static unsigned int input_boost_ms = 40;
 module_param(input_boost_ms, uint, 0644);
 
@@ -216,6 +219,9 @@ static void do_input_boost(struct work_struct *work)
 		else
 			sched_boost_active = true;
 	}
+	
+	if(input_devfreq_boost)
+		devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 415);
 
 	queue_delayed_work(cpu_boost_wq, &input_boost_rem,
 					msecs_to_jiffies(input_boost_ms));
