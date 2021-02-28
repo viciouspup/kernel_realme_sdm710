@@ -216,9 +216,6 @@ static void do_input_boost(struct work_struct *work)
 		else
 			sched_boost_active = true;
 	}
-	
-	if(input_devfreq_boost)
-		devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 415);
 
 	queue_delayed_work(cpu_boost_wq, &input_boost_rem,
 					msecs_to_jiffies(input_boost_ms));
