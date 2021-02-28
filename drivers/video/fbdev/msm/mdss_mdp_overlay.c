@@ -28,6 +28,7 @@
 #include <linux/kmemleak.h>
 #include <linux/kthread.h>
 #include <asm/div64.h>
+#include <linux/devfreq_boost.h>
 
 #include <soc/qcom/event_timer.h>
 #include <linux/msm-bus.h>
@@ -5455,6 +5456,8 @@ static int __handle_overlay_prepare(struct msm_fb_data_type *mfd,
 	}
 
 	pr_debug("prepare fb%d num_ovs=%d\n", mfd->index, num_ovs);
+	
+	devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 200);
 
 	for (i = 0; i < num_ovs; i++) {
 		if (IS_RIGHT_MIXER_OV(ip_ovs[i].flags, ip_ovs[i].dst_rect.x,
