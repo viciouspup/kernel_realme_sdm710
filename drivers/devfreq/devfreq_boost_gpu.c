@@ -298,7 +298,7 @@ static int fb_notifier_cb(struct notifier_block *nb, unsigned long action,
 
 	/* Parse framebuffer blank events as soon as they occur */
 	if (action != FB_EARLY_EVENT_BLANK)
-		return NOTIFY_OK;
+	return NOTIFY_OK;
 
 	/* Boost when the screen turns on and unboost when it turns off */
 	for (i = 0; i < DEVFREQ_MAX_GPU; i++) {
