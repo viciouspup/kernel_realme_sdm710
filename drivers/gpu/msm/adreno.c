@@ -3505,7 +3505,7 @@ static unsigned int adreno_gpuid(struct kgsl_device *device,
 	 */
 
 	if (chipid != NULL)
-		*chipid = adreno_dev->chipid;
+		*chipid = 0x06030000; /* Fake report Adreno 630 */
 
 	/*
 	 * Standard KGSL gpuid format:
