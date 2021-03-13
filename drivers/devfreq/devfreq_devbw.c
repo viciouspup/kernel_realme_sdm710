@@ -212,8 +212,8 @@ int devfreq_add_devbw(struct device *dev)
 		return PTR_ERR(d->df);
 	}
 
-	if (!strcmp(dev_name(dev), "soc:qcom,cpu-llcc-ddr-bw"))
-		devfreq_register_boost_device(DEVFREQ_MSM_CPUBW, d->df);
+	if (!strcmp(dev_name(dev), "soc:qcom,llccbw"))
+		devfreq_register_boost_device(DEVFREQ_MSM_LLCCBW, d->df);
 	
 	return 0;
 }
