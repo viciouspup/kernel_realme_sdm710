@@ -3449,7 +3449,6 @@ int dsi_panel_validate_mode(struct dsi_panel *panel,
 int dsi_panel_get_mode_count(struct dsi_panel *panel,
 	struct device_node *of_node)
 {
-	const u32 SINGLE_MODE_SUPPORT = 1;
 	struct device_node *timings_np;
 	int count, rc = 0;
 
@@ -3474,10 +3473,6 @@ int dsi_panel_get_mode_count(struct dsi_panel *panel,
 		rc = -EINVAL;
 		goto error;
 	}
-
-	/* No multiresolution support is available for video mode panels */
-	if (panel->panel_mode != DSI_OP_CMD_MODE)
-		count = SINGLE_MODE_SUPPORT;
 
 	panel->num_timing_nodes = count;
 
