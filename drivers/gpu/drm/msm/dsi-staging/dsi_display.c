@@ -85,7 +85,7 @@ static const struct of_device_id dsi_display_dt_match[] = {
 };
 
 static unsigned int timing_override;
-module_param(timing_override, uint, 0444);
+module_param(timing_override, uint, 0644);
 
 static struct dsi_display *primary_display;
 static struct dsi_display *secondary_display;
