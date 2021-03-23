@@ -2099,10 +2099,7 @@
 		ufs-qcom-crypto = <&ufs_ice>;
 
 		lanes-per-direction = <1>;
-	//#ifdef VENDOR_EDIT
-	//PengNan@BSP.Power.Basic,remove ufs and emmc compatibility for standby current, 2019/07/30
-	//	spm-level = <5>;
-	//#endif /*VENDOR_EDIT*/
+		spm-level = <5>;
 		dev-ref-clk-freq = <0>; /* 19.2 MHz */
 
 		clock-names =
