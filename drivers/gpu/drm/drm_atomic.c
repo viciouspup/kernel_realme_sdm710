@@ -32,6 +32,7 @@
 #include <drm/drm_plane_helper.h>
 #include <linux/pm_qos.h>
 #include <linux/sync_file.h>
+#include <linux/cpu_input_boost.h>
 #include <linux/devfreq_boost.h>
 
 #include "drm_crtc_internal.h"
@@ -1873,7 +1874,6 @@ static void drm_kick_frame_boost(int timeout_ms)
 
 	if (timeout_ms < 0 || should_kick_frame_boost(timeout_ms)) {
 		devfreq_boost_kick(DEVFREQ_MSM_CPUBW);
-		devfreq_boost_gpu_kick_flex(DEVFREQ_MSM_GPUBW);
 	}
 }
 
