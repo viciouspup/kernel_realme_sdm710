@@ -30,7 +30,6 @@
 #include <linux/msm-bus.h>
 #include <linux/msm-bus-board.h>
 #include <linux/devfreq_boost.h>
-#include <linux/devfreq_boost_gpu.h>
 
 /* Has to be ULL to prevent overflow where this macro is used. */
 #define MBYTE (1ULL << 20)
@@ -215,11 +214,6 @@ int devfreq_add_devbw(struct device *dev)
 
 	if (!strcmp(dev_name(dev), "soc:qcom,cpu-llcc-ddr-bw"))
 		devfreq_register_boost_device(DEVFREQ_MSM_CPUBW, d->df);
-		}
-	if (!strcmp(dev_name(dev), "soc:qcom,gpubw")) {
-		devfreq_register_boost_gpu_device(DEVFREQ_MSM_GPUBW, d->df);
-		pr_info("Added devfreq gpu boost device %s\n",dev_name(dev));
-	}
 	
 	return 0;
 }
