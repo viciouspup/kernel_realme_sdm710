@@ -31,4 +31,5 @@ obj-$(CONFIG_DEVFREQ_SPDM)		+= devfreq_spdm.o devfreq_spdm_debugfs.o
 obj-$(CONFIG_PM_DEVFREQ_EVENT)		+= event/
 
 # DEVFREQ Boost
-obj-$(CONFIG_DEVFREQ_BOOST)		+= devfreq_boost.o
+obj-$(CONFIG_DEVFREQ_BOOST)		+= devfreq_boost.o 
+obj-$(CONFIG_DEVFREQ_BOOST_GPU)		+= devfreq_boost_gpu.o
