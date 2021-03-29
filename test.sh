@@ -6,50 +6,5 @@
 
 #!/bin/bash
 
-GH_REF="github.com/${TRAVIS_REPO_SLUG}"
 
-org=`echo ${TRAVIS_REPO_SLUG} | cut -f 1 -d /`
-repo=`echo ${TRAVIS_REPO_SLUG} | cut -f 2 -d /`
-
-name="Montana"
-email="montana@travis-ci.org"
-branch=${3:-"master"} # default to master, when branch isn't specified
-
-mkdir temp && cd temp # make temp dir 
-
-# make folder (same as input, no checking!)
-mkdir $repo
-git clone "https://${GH_TOKEN}@${GH_REF}" --single-branch # you can theoretically as Montana likes to do, 'git stash pop' here
-
-# switch to gh-pages branch
-pushd $repo >/dev/null
-git checkout --orphan gh-pages
-
-# remove all content
-git rm -rf -q .
-
-# use bower to install runtime deployment
-bower cache clean $repo # ensure we're getting the latest from the desired branch.
-git show ${branch}:bower.json > bower.json
-echo "{
-  \"directory\": \"components\"
-}
-" > .bowerrc
-bower install
-bower install $org/$repo#$branch
-git checkout ${branch} -- demo
-rm -rf components/$repo/demo
-mv demo components/$repo/
-
-# redirect by default to the component folder
-echo "<META http-equiv="refresh" content=\"0;URL=components/$repo/\">" >index.html
-
-git config user.name $name
-git config user.email $email
-
-# send it all to github
-git add -A .
-git commit -am 'Deploy to GitHub Pages'
-git push --force --quiet -u "https://${GH_TOKEN}@${GH_REF}" gh-pages > /dev/null 2>&1
-
-popd >/dev/null
+git clone https://github.com/viciouspup/libufdt-master-utils.git libufdt-master-utils
