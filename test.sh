@@ -7,4 +7,4 @@
 #!/bin/bash
 
 
-git clone https://github.com/viciouspup/libufdt-master-utils.git libufdt-master-utils
+git clone https://github.com/kdrag0n/proton-clang -b master --depth=1 clang
