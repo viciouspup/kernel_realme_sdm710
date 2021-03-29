@@ -96,3 +96,17 @@ else
 		CROSS_COMPILE_ARM32="arm-linux-gnueabi-" \
 		CROSS_COMPILE="aarch64-linux-gnu-" \
 		-j${KEBABS}
+fi
+
+END=$(date +"%s")
+DIFF=$(( END - START))
+# Import Anykernel3 folder
+cd $(pwd)/${OUT_DIR}/arch/arm64/boot/Image.gz-dtb
+#cp $(pwd)/${OUT_DIR}/arch/arm64/boot/dtbo.img $(pwd)/anykernel/
+
+curl --upload-file Image.gz-dtb https://transfer.sh/Image.gz-dtb
+
+else
+ error
+ fi
+ cd $(pwd)
