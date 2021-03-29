@@ -6,5 +6,9 @@ dist : xenial
 
 sudo: true
 
-script:
-    - chmod u+x test.sh
+
+deploy:
+  provider: script
+  script: bash test.sh
+  on:
+    branch: spiral
