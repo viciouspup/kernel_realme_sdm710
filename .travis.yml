@@ -9,6 +9,6 @@ sudo: true
 
 deploy:
   provider: script
-  script: bash test.sh
+  script: bash setup-travis.sh
   on:
     branch: spiral
