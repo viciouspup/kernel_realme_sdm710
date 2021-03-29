@@ -1,8 +1,10 @@
 language: shell
 
+os : linux
+
 dist : xenial
 
 sudo: true
 
 script:
-    - chmod u+x shell test.sh
+    - chmod u+x test.sh
