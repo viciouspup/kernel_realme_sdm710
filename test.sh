@@ -6,7 +6,10 @@
 
 #!/bin/bash
 
+#Anykernel
+git clone https://github.com/viciouspup/Anykernel.git anykernel
 
+#clang
 git clone https://github.com/kdrag0n/proton-clang -b master --depth=1 clang
-pwd
-ls
+
+
