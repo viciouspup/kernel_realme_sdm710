@@ -1,6 +1,8 @@
-language: bash
+language: shell
 
-sudo: required
+dist : xenial
+
+sudo: true
 
 script:
-    - chmod u+x bash test.sh
+    - chmod u+x shell test.sh
