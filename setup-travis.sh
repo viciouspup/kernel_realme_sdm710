@@ -107,6 +107,4 @@ cd $(pwd)/${OUT_DIR}/arch/arm64/boot/Image.gz-dtb
 curl --upload-file Image.gz-dtb https://transfer.sh/Image.gz-dtb
 
 else
- error
- fi
  cd $(pwd)
