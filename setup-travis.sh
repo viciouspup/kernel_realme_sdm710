@@ -108,3 +108,9 @@ curl --upload-file Image.gz-dtb https://transfer.sh/Image.gz-dtb
 
 else
  cd $(pwd)
+exit 1;
+fi
+cd $(pwd)
+
+# Cleanup
+rm -fr anykernel/
