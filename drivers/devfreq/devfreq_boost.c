@@ -10,6 +10,9 @@
 #include <linux/input.h>
 #include <linux/kthread.h>
 #include <linux/module.h>
+#include <linux/slab.h>
+#include <linux/sched.h>
+#include "governor.h"
 
 static bool disable_boosts __read_mostly;
 module_param(disable_boosts, bool, 0644);
