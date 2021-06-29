@@ -237,6 +237,8 @@
 			#size-cells = <0>;
 			
 			compatible = "qcom,gpu-pwrlevels";
+			
+			qcom,speed-bin = <0>;
 
 				/* NOM_L1 */
 				qcom,gpu-pwrlevel@0 {
