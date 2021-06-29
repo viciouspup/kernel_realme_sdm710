@@ -231,10 +231,10 @@
 		 * is calulated as FMAX/4.8 MHz round up to zero
 		 * decimal places.
 		 */
-		qcom,gpu-pwrlevel-bins {
+		/* Power levels */
+		qcom,gpu-pwrlevels {
 			#address-cells = <1>;
 			#size-cells = <0>;
-
 			compatible = "qcom,gpu-pwrlevels";
 
 			qcom,gpu-pwrlevels-0 {
