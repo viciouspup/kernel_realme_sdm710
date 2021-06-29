@@ -239,8 +239,6 @@
 			compatible = "qcom,gpu-pwrlevels";
 			
 			qcom,gpu-pwrlevels-0 {
-			
-			qcom,speed-bin = <128>;
 
 				/* NOM_L1 */
 				qcom,gpu-pwrlevel@0 {
