@@ -238,8 +238,6 @@
 			compatible = "qcom,gpu-pwrlevels";
 
 			qcom,gpu-pwrlevels-0 {
-				#address-cells = <1>;
-				#size-cells = <0>;
 
 				qcom,speed-bin = <128>;
 
