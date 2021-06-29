@@ -238,12 +238,12 @@
 			
 			compatible = "qcom,gpu-pwrlevels";
 			
-			qcom,speed-bin = <128>;
+			qcom,speed-bin = <0>;
 
 				/* NOM_L1 */
 				qcom,gpu-pwrlevel@0 {
 					reg = <0>;
-					qcom,gpu-freq = <617000000>;
+					qcom,gpu-freq = <616000000>;
 					qcom,bus-freq = <11>;
 					qcom,bus-min = <10>;
 					qcom,bus-max = <11>;
