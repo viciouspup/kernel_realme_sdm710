@@ -241,9 +241,6 @@
 
 				qcom,speed-bin = <128>;
 
-				qcom,initial-pwrlevel = <4>;
-				qcom,ca-target-pwrlevel = <3>;
-
 				/* NOM_L1 */
 				qcom,gpu-pwrlevel@0 {
 					reg = <0>;
