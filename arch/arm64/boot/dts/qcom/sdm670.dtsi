@@ -2452,9 +2452,9 @@
 
 		interrupts = <0 266 1>;
 		vdd_cx-supply = <&pm660l_s3_level>;
-		vdd_cx-voltage = <RPMH_REGULATOR_LEVEL_TURBO>;
+		vdd_cx-voltage = <RPMH_REGULATOR_LEVEL_TURBO_L1>;
 		vdd_mx-supply = <&pm660l_s1_level>;
-		vdd_mx-uV = <RPMH_REGULATOR_LEVEL_TURBO>;
+		vdd_mx-uV = <RPMH_REGULATOR_LEVEL_TURBO_L1>;
 		vdd_mss-supply = <&pm660_s5_level>;
 		vdd_mss-uV = <RPMH_REGULATOR_LEVEL_TURBO>;
 		qcom,firmware-name = "modem";
