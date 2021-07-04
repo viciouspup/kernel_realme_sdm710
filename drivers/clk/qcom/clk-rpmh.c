@@ -277,7 +277,7 @@ DEFINE_RSC_TYPE(disp_rsc, "display", true);
 
 /* Resource name must match resource id present in cmd-db. */
 DEFINE_CLK_RPMH_ARC(sdm845, bi_tcxo, bi_tcxo_ao, "xo.lvl", 0x3, 0x0,
-		    &apps_rsc, 19200000, CLK_RPMH_APPS_RSC_STATE_MASK,
+		    &apps_rsc, 20000000, CLK_RPMH_APPS_RSC_STATE_MASK,
 		    CLK_RPMH_APPS_RSC_AO_STATE_MASK);
 DEFINE_CLK_RPMH_VRM(sdm845, ln_bb_clk2, ln_bb_clk2_ao, "lnbclka2", &apps_rsc,
 		    19200000, CLK_RPMH_APPS_RSC_STATE_MASK,
