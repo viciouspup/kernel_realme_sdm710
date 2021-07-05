@@ -87,7 +87,7 @@
 			regulator-name = "pm660l_s1_level";
 			qcom,set = <RPMH_REGULATOR_SET_ALL>;
 			regulator-min-microvolt = <RPMH_REGULATOR_LEVEL_OFF>;
-			regulator-max-microvolt = <RPMH_REGULATOR_LEVEL_MAX>;
+			regulator-max-microvolt = <RPMH_REGULATOR_LEVEL_TURBO_L1>;
 		};
 
 		pm660l_s1_level_ao: regulator-pm660l-s1-level-ao {
