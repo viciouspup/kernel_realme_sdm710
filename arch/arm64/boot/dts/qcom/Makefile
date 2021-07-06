@@ -1,6 +1,4 @@
-ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
-	dtbo-$(CONFIG_ARCH_SDM670) += \
-		sdm710-pm660a-mtp-overlay.dtbo
+($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
 
 sdm710-pm660a-mtp-overlay.dtbo-base := sdm710.dtb
 else
